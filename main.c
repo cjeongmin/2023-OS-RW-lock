@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+// <Starvation>
 typedef struct _rwlock_t {
     sem_t writelock;
     sem_t mutex;
@@ -48,6 +49,7 @@ void rwlock_acquire_writelock(rwlock_t *rw) {
 }
 
 void rwlock_release_writelock(rwlock_t *rw) { Sem_post(&rw->writelock); }
+// </Starvation>
 
 //
 // Don't change the code below (just use it!) But fix it if bugs are found!
@@ -287,7 +289,9 @@ gcc -o reader-writer main.c
 예제 시나리오
 ./reader-writer -n 6 -a 0:0:5,0:1:5,1:3:4,0:5:3,1:6:2,0:7:4
 
-만든 시나리오 1
+만든 시나리오 1 (읽기 작업 시작, 쓰기 작업, 읽기 작업 들어옴, 쓰기 작업
+들어옴)
+./reader-writer -n 4 -a 0:0:3,1:1:5,0:2:5,1:3:5
 
 만든 시나리오 2
 
