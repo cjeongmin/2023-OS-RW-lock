@@ -93,7 +93,7 @@ void wait_next_step() {
     if (wating_jobs == job_count - rwlock.WR - rwlock.WW - 1 - done_jobs) {
         printf("[Time: %3d]: ", t);
         for (int i = 0; i < job_count; i++) {
-            printf("%30s", strings[i]);
+            printf("%-30s", strings[i]);
             sprintf(strings[i], "");
         }
         printf("\n");
