@@ -161,8 +161,8 @@ void *reader(void *arg) {
     wait_next_step();
     // end reading
     TICK;
-    rwlock_release_readlock(&rwlock);
     sprintf(strings[args->thread_id], "[%d] release readlock", args->thread_id);
+    rwlock_release_readlock(&rwlock);
     wait_next_step();
 
     Sem_wait(&step_lock_mutex);
@@ -196,9 +196,9 @@ void *writer(void *arg) {
 
     // end writing
     TICK;
-    rwlock_release_writelock(&rwlock);
     sprintf(strings[args->thread_id], "[%d] release writelock",
             args->thread_id);
+    rwlock_release_writelock(&rwlock);
     wait_next_step();
 
     Sem_wait(&step_lock_mutex);
