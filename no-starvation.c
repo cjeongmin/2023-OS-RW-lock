@@ -297,7 +297,8 @@ int main(int argc, char *argv[]) {
 }
 
 /*
-gcc -o reader-writer main.c
+gcc -o reader-writer starvation.c
+gcc -o reader-writer no-startvation.c
 
 리포트 기본 매개변수
 ./reader-writer -n 6 -a 0:0:5,0:1:8,1:3:4,0:5:7,1:6:2,0:7:4
@@ -310,5 +311,4 @@ gcc -o reader-writer main.c
 ./reader-writer -n 5 -a 0:0:2,1:1:5,0:2:5,1:3:5
 
 만든 시나리오 2
-
 */
