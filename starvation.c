@@ -4,14 +4,17 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+// <Starvation>
 typedef struct _rwlock_t {
     sem_t writelock;
     sem_t mutex;
     int AR; // number of Active Readers
+    int WR;
+    int WW;
 } rwlock_t;
 
 void rwlock_init(rwlock_t *rw) {
-    rw->AR = 0;
+    rw->WR = rw->WW = rw->AR = 0;
     Sem_init(&rw->mutex, 1);
     Sem_init(&rw->writelock, 1);
 }
@@ -19,8 +22,11 @@ void rwlock_init(rwlock_t *rw) {
 void rwlock_acquire_readlock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
     rw->AR++;
-    if (rw->AR == 1)
+    if (rw->AR == 1) {
+        rw->WR++;
         Sem_wait(&rw->writelock);
+        rw->WR--;
+    }
     Sem_post(&rw->mutex);
 }
 
@@ -32,16 +38,68 @@ void rwlock_release_readlock(rwlock_t *rw) {
     Sem_post(&rw->mutex);
 }
 
-void rwlock_acquire_writelock(rwlock_t *rw) { Sem_wait(&rw->writelock); }
+void rwlock_acquire_writelock(rwlock_t *rw) {
+    Sem_wait(&rw->mutex);
+    rw->WW++;
+    Sem_post(&rw->mutex);
+    Sem_wait(&rw->writelock);
+    Sem_wait(&rw->mutex);
+    rw->WW--;
+    Sem_post(&rw->mutex);
+}
 
 void rwlock_release_writelock(rwlock_t *rw) { Sem_post(&rw->writelock); }
+// </Starvation>
 
 //
 // Don't change the code below (just use it!) But fix it if bugs are found!
 //
 
+rwlock_t rwlock;
+
 int loops;
 int DB = 0;
+
+// * For count time
+
+int t = 0;
+int wating_jobs = 0;
+int job_count = 0;
+int done_jobs = 0;
+sem_t step_lock;
+sem_t step_lock_mutex;
+
+char *strings[1000];
+
+void wait_next_step() {
+    Sem_wait(&step_lock_mutex);
+    Sem_wait(&rwlock.mutex);
+    if (wating_jobs == job_count - rwlock.WR - rwlock.WW - 1 - done_jobs) {
+        printf("[Time: %3d]: ", t);
+        for (int i = 0; i < job_count; i++) {
+            printf("%-30s", strings[i]);
+            sprintf(strings[i], "");
+        }
+        printf("\n");
+
+        t++;
+        for (int i = wating_jobs; i > 0; i--) {
+            Sem_post(&step_lock);
+        }
+    } else {
+        wating_jobs++;
+        Sem_post(&rwlock.mutex);
+        Sem_post(&step_lock_mutex);
+        Sem_wait(&step_lock);
+        Sem_wait(&step_lock_mutex);
+        Sem_wait(&rwlock.mutex);
+        wating_jobs--;
+    }
+    Sem_post(&rwlock.mutex);
+    Sem_post(&step_lock_mutex);
+}
+
+// * For count time
 
 typedef struct {
     int thread_id;
@@ -55,6 +113,8 @@ sem_t print_lock;
 #define TAB 10
 void space(int s) {
     Sem_wait(&print_lock);
+    printf("[Time: %3d]\t", t);
+    s = s * 3;
     int i;
     for (i = 0; i < s * TAB; i++)
         printf(" ");
@@ -63,28 +123,38 @@ void space(int s) {
 void space_end() { Sem_post(&print_lock); }
 
 #define TICK sleep(1) // 1/100초 단위로 하고 싶으면 usleep(10000)
-rwlock_t rwlock;
 
 void *reader(void *arg) {
     arg_t *args = (arg_t *)arg;
 
     TICK;
+    sprintf(strings[args->thread_id], "[%d] acquire read-lock",
+            args->thread_id);
+    wait_next_step();
     rwlock_acquire_readlock(&rwlock);
     // start reading
     int i;
     for (i = 0; i < args->running_time - 1; i++) {
         TICK;
-        space(args->thread_id);
-        printf("reading %d of %d\n", i, args->running_time);
-        space_end();
+        sprintf(strings[args->thread_id], "[%d] reading %d of %d",
+                args->thread_id, i, args->running_time);
+        wait_next_step();
     }
     TICK;
-    space(args->thread_id);
-    printf("reading %d of %d, DB is %d\n", i, args->running_time, DB);
-    space_end();
+    sprintf(strings[args->thread_id], "[%d] reading %d of %d, DB is %d",
+            args->thread_id, i, args->running_time, DB);
+    wait_next_step();
     // end reading
     TICK;
+    sprintf(strings[args->thread_id], "[%d] release read-lock",
+            args->thread_id);
     rwlock_release_readlock(&rwlock);
+    wait_next_step();
+
+    Sem_wait(&step_lock_mutex);
+    done_jobs++;
+    Sem_post(&step_lock_mutex);
+
     return NULL;
 }
 
@@ -92,23 +162,34 @@ void *writer(void *arg) {
     arg_t *args = (arg_t *)arg;
 
     TICK;
+    sprintf(strings[args->thread_id], "[%d] acquire write-lock",
+            args->thread_id);
+    wait_next_step();
     rwlock_acquire_writelock(&rwlock);
     // start writing
     int i;
     for (i = 0; i < args->running_time - 1; i++) {
         TICK;
-        space(args->thread_id);
-        printf("writing %d of %d\n", i, args->running_time);
-        space_end();
+        sprintf(strings[args->thread_id], "[%d] writing %d of %d",
+                args->thread_id, i, args->running_time);
+        wait_next_step();
     }
     TICK;
     DB++;
-    space(args->thread_id);
-    printf("writing %d of %d, DB is %d\n", i, args->running_time, DB);
-    space_end();
+    sprintf(strings[args->thread_id], "[%d] writing %d of %d, DB is %d",
+            args->thread_id, i, args->running_time, DB);
+    wait_next_step();
+
     // end writing
     TICK;
+    sprintf(strings[args->thread_id], "[%d] release write-lock",
+            args->thread_id);
     rwlock_release_writelock(&rwlock);
+    wait_next_step();
+
+    Sem_wait(&step_lock_mutex);
+    done_jobs++;
+    Sem_post(&step_lock_mutex);
 
     return NULL;
 }
@@ -118,9 +199,9 @@ void *worker(void *arg) {
     int i;
     for (i = 0; i < args->arrival_delay; i++) {
         TICK;
-        space(args->thread_id);
-        printf("arrival delay %d of %d\n", i, args->arrival_delay);
-        space_end();
+        sprintf(strings[args->thread_id], "[%d] arrival delay %d of %d",
+                args->thread_id, i, args->arrival_delay);
+        wait_next_step();
     }
     if (args->job_type == 0)
         reader(arg);
@@ -152,6 +233,7 @@ int main(int argc, char *argv[]) {
 
     int i, j = 0;
     for (i = 0; i < num_workers; i++) {
+        strings[i] = (char *)malloc(100 * sizeof(char));
 
         // parse
         int job_type = arg[j] - '0';
@@ -183,6 +265,9 @@ int main(int argc, char *argv[]) {
     printf(" ... heading  ...  \n"); // a[]의 정보를 반영해서 헤딩 라인을 출력
 
     Sem_init(&print_lock, 1);
+    Sem_init(&step_lock, 0);
+    Sem_init(&step_lock_mutex, 1);
+    job_count = num_workers;
 
     for (i = 0; i < num_workers; i++)
         Pthread_create(&p[i], NULL, worker, &a[i]);
@@ -194,3 +279,18 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+
+/*
+gcc -o reader-writer main.c
+
+리포트 기본 매개변수
+./reader-writer -n 6 -a 0:0:5,0:1:8,1:3:4,0:5:7,1:6:2,0:7:4
+
+예제 시나리오
+./reader-writer -n 6 -a 0:0:5,0:1:5,1:3:4,0:5:3,1:6:2,0:7:4
+
+만든 시나리오 1
+
+만든 시나리오 2
+
+*/

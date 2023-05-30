@@ -4,40 +4,36 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-// <NoStarvation>
+// <Starvation>
 typedef struct _rwlock_t {
-    sem_t writelock, readlock;
+    sem_t writelock;
     sem_t mutex;
     int AR; // number of Active Readers
-    int AW; // number of Active Writers
-    int WR; // number of Waiting Readers
-    int WW; // number of Waiting Writers
+    int WR;
+    int WW;
 } rwlock_t;
 
 void rwlock_init(rwlock_t *rw) {
-    rw->AR = rw->AW = rw->WR = rw->WW = 0;
+    rw->WR = rw->WW = rw->AR = 0;
     Sem_init(&rw->mutex, 1);
-    Sem_init(&rw->writelock, 0);
-    Sem_init(&rw->readlock, 0);
+    Sem_init(&rw->writelock, 1);
 }
 
 void rwlock_acquire_readlock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
-    rw->WR++;
-    while (rw->AW + rw->WW > 0) {
-        Sem_post(&rw->mutex);
-        Sem_wait(&rw->readlock);
-        Sem_wait(&rw->mutex);
-    }
-    rw->WR--;
     rw->AR++;
+    if (rw->AR == 1) {
+        rw->WR++;
+        Sem_wait(&rw->writelock);
+        rw->WR--;
+    }
     Sem_post(&rw->mutex);
 }
 
 void rwlock_release_readlock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
     rw->AR--;
-    if (rw->AR == 0 && rw->WW > 0)
+    if (rw->AR == 0)
         Sem_post(&rw->writelock);
     Sem_post(&rw->mutex);
 }
@@ -45,76 +41,15 @@ void rwlock_release_readlock(rwlock_t *rw) {
 void rwlock_acquire_writelock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
     rw->WW++;
-    while (rw->AR + rw->AW > 0) {
-        Sem_post(&rw->mutex);
-        Sem_wait(&rw->writelock);
-        Sem_wait(&rw->mutex);
-    }
-    rw->WW--;
-    rw->AW++;
     Sem_post(&rw->mutex);
-}
-
-void rwlock_release_writelock(rwlock_t *rw) {
+    Sem_wait(&rw->writelock);
     Sem_wait(&rw->mutex);
-    rw->AW--;
-    if (rw->WW > 0)
-        Sem_post(&rw->writelock);
-    else if (rw->WR > 0) {
-        for (int i = rw->WR; i > 0; i--) {
-            Sem_post(&rw->readlock);
-        }
-    }
+    rw->WW--;
     Sem_post(&rw->mutex);
 }
-// </NoStarvation>
 
-// // <Starvation>
-// typedef struct _rwlock_t {
-//     sem_t writelock;
-//     sem_t mutex;
-//     int AR; // number of Active Readers
-//     int WR;
-//     int WW;
-// } rwlock_t;
-
-// void rwlock_init(rwlock_t *rw) {
-//     rw->WR = rw->WW = rw->AR = 0;
-//     Sem_init(&rw->mutex, 1);
-//     Sem_init(&rw->writelock, 1);
-// }
-
-// void rwlock_acquire_readlock(rwlock_t *rw) {
-//     Sem_wait(&rw->mutex);
-//     rw->AR++;
-//     if (rw->AR == 1) {
-//         rw->WR++;
-//         Sem_wait(&rw->writelock);
-//         rw->WR--;
-//     }
-//     Sem_post(&rw->mutex);
-// }
-
-// void rwlock_release_readlock(rwlock_t *rw) {
-//     Sem_wait(&rw->mutex);
-//     rw->AR--;
-//     if (rw->AR == 0)
-//         Sem_post(&rw->writelock);
-//     Sem_post(&rw->mutex);
-// }
-
-// void rwlock_acquire_writelock(rwlock_t *rw) {
-//     Sem_wait(&rw->mutex);
-//     rw->WW++;
-//     Sem_post(&rw->mutex);
-//     Sem_wait(&rw->writelock);
-//     Sem_wait(&rw->mutex);
-//     rw->WW--;
-//     Sem_post(&rw->mutex);
-// }
-
-// void rwlock_release_writelock(rwlock_t *rw) { Sem_post(&rw->writelock); }
-// // </Starvation>
+void rwlock_release_writelock(rwlock_t *rw) { Sem_post(&rw->writelock); }
+// </Starvation>
 
 //
 // Don't change the code below (just use it!) But fix it if bugs are found!
@@ -346,14 +281,16 @@ int main(int argc, char *argv[]) {
 }
 
 /*
-// 리포트 기본 매개변수
+gcc -o reader-writer main.c
+
+리포트 기본 매개변수
 ./reader-writer -n 6 -a 0:0:5,0:1:8,1:3:4,0:5:7,1:6:2,0:7:4
 
-// 예제 시나리오
+예제 시나리오
 ./reader-writer -n 6 -a 0:0:5,0:1:5,1:3:4,0:5:3,1:6:2,0:7:4
 
-// 만든 시나리오 1
+만든 시나리오 1
 
-// 만든 시나리오 2
+만든 시나리오 2
 
 */
