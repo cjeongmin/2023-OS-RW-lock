@@ -2,6 +2,7 @@
 #include "zemaphore.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 typedef struct _rwlock_t {
@@ -64,6 +65,7 @@ int t = 0;
 int wating_jobs = 0;
 int job_count = 0;
 int done_jobs = 0;
+int *done_list;
 sem_t step_lock;
 sem_t step_lock_mutex;
 
@@ -75,6 +77,13 @@ void wait_next_step() {
     if (wating_jobs == job_count - rwlock.WR - rwlock.WW - 1 - done_jobs) {
         printf("[Time: %3d]: ", t);
         for (int i = 0; i < job_count; i++) {
+            if (!strcmp(strings[i], "")) {
+                sprintf(strings[i], "[%d] %s", i,
+                        (done_list[i] ? (done_list[i] == 1 ? "DONE" : "")
+                                      : "SLEEP"));
+                if (done_list[i] == 1)
+                    done_list[i] = 2;
+            }
             printf("%-30s", strings[i]);
             sprintf(strings[i], "");
         }
@@ -120,7 +129,8 @@ void space(int s) {
 
 void space_end() { Sem_post(&print_lock); }
 
-#define TICK sleep(1) // 1/100초 단위로 하고 싶으면 usleep(10000)
+// #define TICK sleep(1) // 1/100초 단위로 하고 싶으면 usleep(10000)
+#define TICK usleep(10000)
 
 void *reader(void *arg) {
     arg_t *args = (arg_t *)arg;
@@ -151,6 +161,7 @@ void *reader(void *arg) {
 
     Sem_wait(&step_lock_mutex);
     done_jobs++;
+    done_list[args->thread_id] = 1;
     Sem_post(&step_lock_mutex);
 
     return NULL;
@@ -187,6 +198,7 @@ void *writer(void *arg) {
 
     Sem_wait(&step_lock_mutex);
     done_jobs++;
+    done_list[args->thread_id] = 1;
     Sem_post(&step_lock_mutex);
 
     return NULL;
@@ -229,6 +241,9 @@ int main(int argc, char *argv[]) {
 
     char *arg = argv[4];
 
+    done_list = (int *)malloc(sizeof(int) * num_workers);
+    for (int i = 0; i < num_workers; i++)
+        done_list[i] = 0;
     int i, j = 0;
     for (i = 0; i < num_workers; i++) {
         strings[i] = (char *)malloc(100 * sizeof(char));
@@ -280,7 +295,7 @@ int main(int argc, char *argv[]) {
 
 /*
 gcc -o reader-writer starvation.c
-gcc -o reader-writer no-startvation.c
+gcc -o reader-writer no-starvation.c
 
 리포트 기본 매개변수
 ./reader-writer -n 6 -a 0:0:5,0:1:8,1:3:4,0:5:7,1:6:2,0:7:4
