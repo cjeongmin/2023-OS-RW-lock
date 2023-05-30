@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+// <NoStarvation>
 typedef struct _rwlock_t {
     sem_t writelock, readlock;
     sem_t mutex;
@@ -66,6 +67,54 @@ void rwlock_release_writelock(rwlock_t *rw) {
     }
     Sem_post(&rw->mutex);
 }
+// </NoStarvation>
+
+// // <Starvation>
+// typedef struct _rwlock_t {
+//     sem_t writelock;
+//     sem_t mutex;
+//     int AR; // number of Active Readers
+//     int WR;
+//     int WW;
+// } rwlock_t;
+
+// void rwlock_init(rwlock_t *rw) {
+//     rw->WR = rw->WW = rw->AR = 0;
+//     Sem_init(&rw->mutex, 1);
+//     Sem_init(&rw->writelock, 1);
+// }
+
+// void rwlock_acquire_readlock(rwlock_t *rw) {
+//     Sem_wait(&rw->mutex);
+//     rw->AR++;
+//     if (rw->AR == 1) {
+//         rw->WR++;
+//         Sem_wait(&rw->writelock);
+//         rw->WR--;
+//     }
+//     Sem_post(&rw->mutex);
+// }
+
+// void rwlock_release_readlock(rwlock_t *rw) {
+//     Sem_wait(&rw->mutex);
+//     rw->AR--;
+//     if (rw->AR == 0)
+//         Sem_post(&rw->writelock);
+//     Sem_post(&rw->mutex);
+// }
+
+// void rwlock_acquire_writelock(rwlock_t *rw) {
+//     Sem_wait(&rw->mutex);
+//     rw->WW++;
+//     Sem_post(&rw->mutex);
+//     Sem_wait(&rw->writelock);
+//     Sem_wait(&rw->mutex);
+//     rw->WW--;
+//     Sem_post(&rw->mutex);
+// }
+
+// void rwlock_release_writelock(rwlock_t *rw) { Sem_post(&rw->writelock); }
+// // </Starvation>
 
 //
 // Don't change the code below (just use it!) But fix it if bugs are found!
@@ -144,7 +193,8 @@ void *reader(void *arg) {
     arg_t *args = (arg_t *)arg;
 
     TICK;
-    sprintf(strings[args->thread_id], "[%d] acquire readlock", args->thread_id);
+    sprintf(strings[args->thread_id], "[%d] acquire read-lock",
+            args->thread_id);
     wait_next_step();
     rwlock_acquire_readlock(&rwlock);
     // start reading
@@ -161,7 +211,8 @@ void *reader(void *arg) {
     wait_next_step();
     // end reading
     TICK;
-    sprintf(strings[args->thread_id], "[%d] release readlock", args->thread_id);
+    sprintf(strings[args->thread_id], "[%d] release read-lock",
+            args->thread_id);
     rwlock_release_readlock(&rwlock);
     wait_next_step();
 
@@ -176,7 +227,7 @@ void *writer(void *arg) {
     arg_t *args = (arg_t *)arg;
 
     TICK;
-    sprintf(strings[args->thread_id], "[%d] acquire writelock",
+    sprintf(strings[args->thread_id], "[%d] acquire write-lock",
             args->thread_id);
     wait_next_step();
     rwlock_acquire_writelock(&rwlock);
@@ -196,7 +247,7 @@ void *writer(void *arg) {
 
     // end writing
     TICK;
-    sprintf(strings[args->thread_id], "[%d] release writelock",
+    sprintf(strings[args->thread_id], "[%d] release write-lock",
             args->thread_id);
     rwlock_release_writelock(&rwlock);
     wait_next_step();
