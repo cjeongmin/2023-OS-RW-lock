@@ -78,11 +78,12 @@ void wait_next_step() {
         printf("[Time: %3d]: ", t);
         for (int i = 0; i < job_count; i++) {
             if (!strcmp(strings[i], "")) {
-                sprintf(strings[i], "[%d] %s", i,
-                        (done_list[i] ? (done_list[i] == 1 ? "DONE" : "")
-                                      : "SLEEP"));
-                if (done_list[i] == 1)
-                    done_list[i] = 2;
+                if (done_list[i] != 2) {
+                    sprintf(strings[i], "[%d] %s", i,
+                            (done_list[i] ? "DONE" : "SLEEP"));
+                    if (done_list[i] == 1)
+                        done_list[i] = 2;
+                }
             }
             printf("%-30s", strings[i]);
             sprintf(strings[i], "");
@@ -130,7 +131,7 @@ void space(int s) {
 void space_end() { Sem_post(&print_lock); }
 
 // #define TICK sleep(1) // 1/100초 단위로 하고 싶으면 usleep(10000)
-#define TICK usleep(10000)
+#define TICK usleep(100000)
 
 void *reader(void *arg) {
     arg_t *args = (arg_t *)arg;
