@@ -23,13 +23,13 @@ void rwlock_init(rwlock_t *rw) {
 
 void rwlock_acquire_readlock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
-    rw->WR++;
     while (rw->AW + rw->WW > 0) {
+        rw->WR++;
         Sem_post(&rw->mutex);
         Sem_wait(&rw->readlock);
         Sem_wait(&rw->mutex);
+        rw->WR--;
     }
-    rw->WR--;
     rw->AR++;
     Sem_post(&rw->mutex);
 }
@@ -44,13 +44,13 @@ void rwlock_release_readlock(rwlock_t *rw) {
 
 void rwlock_acquire_writelock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
-    rw->WW++;
     while (rw->AR + rw->AW > 0) {
+        rw->WW++;
         Sem_post(&rw->mutex);
         Sem_wait(&rw->writelock);
         Sem_wait(&rw->mutex);
+        rw->WW--;
     }
-    rw->WW--;
     rw->AW++;
     Sem_post(&rw->mutex);
 }
@@ -92,7 +92,7 @@ char *strings[1000];
 void wait_next_step() {
     Sem_wait(&step_lock_mutex);
     Sem_wait(&rwlock.mutex);
-    if (wating_jobs == job_count - rwlock.WR - rwlock.WW - 1 - done_jobs) {
+    if (wating_jobs == job_count - rwlock.WR - rwlock.WW - done_jobs - 1) {
         printf("[Time: %3d]: ", t);
         for (int i = 0; i < job_count; i++) {
             if (!strcmp(strings[i], "")) {

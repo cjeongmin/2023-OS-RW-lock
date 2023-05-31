@@ -9,12 +9,11 @@ typedef struct _rwlock_t {
     sem_t writelock;
     sem_t mutex;
     int AR; // number of Active Readers
-    int WR;
     int WW;
 } rwlock_t;
 
 void rwlock_init(rwlock_t *rw) {
-    rw->WR = rw->WW = rw->AR = 0;
+    rw->WW = rw->AR = 0;
     Sem_init(&rw->mutex, 1);
     Sem_init(&rw->writelock, 1);
 }
@@ -22,11 +21,8 @@ void rwlock_init(rwlock_t *rw) {
 void rwlock_acquire_readlock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
     rw->AR++;
-    if (rw->AR == 1) {
-        rw->WR++;
+    if (rw->AR == 1)
         Sem_wait(&rw->writelock);
-        rw->WR--;
-    }
     Sem_post(&rw->mutex);
 }
 
@@ -40,11 +36,13 @@ void rwlock_release_readlock(rwlock_t *rw) {
 
 void rwlock_acquire_writelock(rwlock_t *rw) {
     Sem_wait(&rw->mutex);
-    rw->WW++;
-    Sem_post(&rw->mutex);
-    Sem_wait(&rw->writelock);
-    Sem_wait(&rw->mutex);
-    rw->WW--;
+    while (rw->AR > 0) {
+        rw->WW++;
+        Sem_post(&rw->mutex);
+        Sem_wait(&rw->writelock);
+        Sem_wait(&rw->mutex);
+        rw->WW--;
+    }
     Sem_post(&rw->mutex);
 }
 
@@ -74,7 +72,7 @@ char *strings[1000];
 void wait_next_step() {
     Sem_wait(&step_lock_mutex);
     Sem_wait(&rwlock.mutex);
-    if (wating_jobs == job_count - rwlock.WR - rwlock.WW - 1 - done_jobs) {
+    if (wating_jobs == job_count - rwlock.WW - done_jobs - 1) {
         printf("[Time: %3d]: ", t);
         for (int i = 0; i < job_count; i++) {
             if (!strcmp(strings[i], "")) {
@@ -304,9 +302,8 @@ gcc -o reader-writer no-starvation.c
 예제 시나리오
 ./reader-writer -n 6 -a 0:0:5,0:1:5,1:3:4,0:5:3,1:6:2,0:7:4
 
-만든 시나리오 1 (읽기 작업 시작, 쓰기 작업 시작, 읽기 작업 들어옴, 쓰기 작업
-들어옴)
-./reader-writer -n 5 -a 0:0:2,1:1:5,0:2:5,1:3:5
+만든 시나리오 1
+./reader-writer -n 5 -a 1:0:3,0:1:3,0:2:3,1:3:3,0:3:5
 
 만든 시나리오 2
 */
